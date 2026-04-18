@@ -13,7 +13,7 @@
 3. [Step 2 — Hugging Face API Key](#step-2--hugging-face-api-key)
 4. [Step 3 — Telegram Bot Registration](#step-3--telegram-bot-registration)
 5. [Step 4 — Local Development](#step-4--local-development)
-6. [Step 5 — Deploy Backend to Railway](#step-5--deploy-backend-to-railway)
+6. [Step 5 — Deploy Backend to Render](#step-5--deploy-backend-to-render)
 7. [Step 6 — Deploy Frontend to Vercel](#step-6--deploy-frontend-to-vercel)
 8. [API Reference](#api-reference)
 9. [Environment Variables Reference](#environment-variables-reference)
@@ -25,14 +25,14 @@
 
 ```
 ┌──────────────┐    HTTPS     ┌────────────────────────────┐
-│  Vercel      │ ──────────▶ │  Railway.app               │
-│  (Frontend)  │             │  Spring Boot 3.2 (Java 21) │
-│  HTML/CSS/JS │ ◀────────── │  + Telegram Bot (built-in) │
+│  Vercel      │ ──────────▶ │  Render (Docker)            │
+│  (Frontend)  │             │  Spring Boot 3.2 (Java 21)  │
+│  HTML/CSS/JS │ ◀────────── │  + Telegram Bot (built-in)  │
 └──────────────┘             └────────────┬───────────────┘
                                           │
                     ┌─────────────────────┼─────────────────────┐
                     │                     │                     │
-             ┌──────▼──────┐     ┌────── ▼──────┐    ┌────────▼──────┐
+             ┌──────▼──────┐     ┌───────▼──────┐    ┌────────▼──────┐
              │  Supabase   │     │ Hugging Face │    │   Telegram    │
              │  PostgreSQL │     │ Inference API│    │   Server      │
              │  + pgvector │     │ (free tier)  │    │               │
@@ -95,6 +95,14 @@ You'll need:
 5. Save this as `TELEGRAM_BOT_TOKEN`
 6. Save the username (without `@`) as `TELEGRAM_BOT_USERNAME`, e.g. `YourReelVaultBot`
 
+### Get your Telegram Chat ID (for security)
+
+1. Open Telegram and search for **@userinfobot**
+2. Send `/start` — it replies with your user ID (a number like `987654321`)
+3. Save this as `TELEGRAM_ALLOWED_CHAT_ID`
+
+> This restricts the bot to only accept commands from your account.
+
 ### Enable commands in BotFather (optional but recommended)
 
 Send `/setcommands` to @BotFather, select your bot, then paste:
@@ -126,6 +134,7 @@ help - Show all commands
    export HUGGINGFACE_API_KEY="hf_xxxx"
    export TELEGRAM_BOT_TOKEN="your-telegram-token"
    export TELEGRAM_BOT_USERNAME="YourBotUsername"
+   export TELEGRAM_ALLOWED_CHAT_ID="your-telegram-user-id"
    export CORS_ALLOWED_ORIGIN="http://localhost:5500"
    ```
 
@@ -154,40 +163,67 @@ Open `http://localhost:5500`.
 
 ---
 
-## Step 5 — Deploy Backend to Railway
+## Step 5 — Deploy Backend to Render
 
-### Initial setup
+ReelVault deploys to [Render](https://render.com) using a **Dockerfile** (Render doesn't support Java natively).
 
-1. Create a free account at [railway.app](https://railway.app)
-2. Click **New Project → Deploy from GitHub repo**
-3. Connect your GitHub account and select your repository
-4. Railway will auto-detect the project. Set the **Root Directory** to `backend/`
-5. Set **build command** (Railway usually auto-detects Maven):
+### How the Dockerfile works
+
+```
+Stage 1: maven:3.9-eclipse-temurin-21    →  Builds reelvault.jar
+Stage 2: eclipse-temurin:21-jre-alpine   →  Lightweight runtime (~200MB)
+```
+
+- Dependencies are cached in a separate Docker layer (fast rebuilds)
+- JVM is tuned for Render's free tier: `-Xms128m -Xmx384m`
+- Port is set via Render's `PORT` env var (defaults to 10000)
+
+### Deploy Steps
+
+1. Push your code to GitHub (if you haven't already):
+   ```bash
+   git add .
+   git commit -m "deploy to Render"
+   git push
    ```
-   mvn clean package -DskipTests
-   ```
-6. Set **start command**:
-   ```
-   java -jar target/reelvault.jar
-   ```
 
-### Environment Variables
+2. Go to [render.com](https://render.com) → **New** → **Web Service**
 
-In Railway dashboard → your service → **Variables**, add:
+3. Connect your GitHub repo: `kshirsagar-omkar/ReelVault`
 
-| Variable | Value |
-|---|---|
-| `SUPABASE_DB_URL` | `jdbc:postgresql://db.XXX.supabase.co:5432/postgres?sslmode=require` |
-| `SUPABASE_DB_USER` | `postgres` |
-| `SUPABASE_DB_PASSWORD` | your Supabase password |
-| `HUGGINGFACE_API_KEY` | `hf_xxxx` |
-| `TELEGRAM_BOT_TOKEN` | your bot token |
-| `TELEGRAM_BOT_USERNAME` | your bot username (no @) |
-| `CORS_ALLOWED_ORIGIN` | `https://your-app.vercel.app` (update after Vercel deploy) |
+4. Render auto-detects the `Dockerfile` at the repo root. Configure:
+   | Setting | Value |
+   |---|---|
+   | **Name** | `reelvault` |
+   | **Region** | Pick closest to you |
+   | **Branch** | `main` |
+   | **Root Directory** | *(leave blank)* |
+   | **Runtime** | Docker |
+   | **Instance Type** | Free |
 
-### Get your Railway URL
+5. Add **Environment Variables** in the Render dashboard:
 
-After deploy: **Settings → Domains** → copy the URL, e.g. `https://reelvault-production.up.railway.app`
+   | Variable | Value |
+   |---|---|
+   | `SUPABASE_DB_URL` | `jdbc:postgresql://db.XXX.supabase.co:5432/postgres?sslmode=require` |
+   | `SUPABASE_DB_USER` | `postgres` |
+   | `SUPABASE_DB_PASSWORD` | your Supabase password |
+   | `HUGGINGFACE_API_KEY` | `hf_xxxx` |
+   | `TELEGRAM_BOT_TOKEN` | your bot token |
+   | `TELEGRAM_BOT_USERNAME` | your bot username (no @) |
+   | `TELEGRAM_ALLOWED_CHAT_ID` | your Telegram user ID |
+   | `CORS_ALLOWED_ORIGIN` | `https://your-app.vercel.app` (update after Vercel deploy) |
+
+6. Click **Create Web Service** → Render builds the Docker image and deploys.
+
+### Get your Render URL
+
+After deploy, your service URL will look like:
+```
+https://reelvault.onrender.com
+```
+
+> **Free tier note:** Render free tier spins down after 15 minutes of inactivity. The first request after that takes ~30-60 seconds (Docker container restart). Consider the Starter plan ($7/month) for always-on.
 
 ---
 
@@ -195,9 +231,9 @@ After deploy: **Settings → Domains** → copy the URL, e.g. `https://reelvault
 
 ### Prepare
 
-1. Edit `frontend/js/env.js` and set your Railway URL:
+1. Edit `frontend/js/env.js` and set your Render URL:
    ```javascript
-   window.REELVAULT_API_URL = 'https://reelvault-production.up.railway.app';
+   window.REELVAULT_API_URL = 'https://reelvault.onrender.com';
    ```
 2. Commit and push to GitHub.
 
@@ -213,7 +249,7 @@ Vercel will give you a URL like `https://reelvault.vercel.app`.
 
 ### Update CORS
 
-Go back to Railway → Variables → update `CORS_ALLOWED_ORIGIN` to your exact Vercel URL.
+Go back to Render → Environment → update `CORS_ALLOWED_ORIGIN` to your exact Vercel URL (no trailing slash).
 
 ---
 
@@ -241,7 +277,7 @@ All endpoints are prefixed with `/api`.
 ### Example: Save an item
 
 ```bash
-curl -X POST https://your-backend.railway.app/api/items \
+curl -X POST https://reelvault.onrender.com/api/items \
   -H "Content-Type: application/json" \
   -d '{
     "title": "LangGraph — Build stateful AI agents",
@@ -256,7 +292,7 @@ curl -X POST https://your-backend.railway.app/api/items \
 ### Example: Semantic search
 
 ```bash
-curl -X POST https://your-backend.railway.app/api/search \
+curl -X POST https://reelvault.onrender.com/api/search \
   -H "Content-Type: application/json" \
   -d '{"query": "AI that can browse the web autonomously", "limit": 5}'
 ```
@@ -278,14 +314,14 @@ curl -X POST https://your-backend.railway.app/api/search \
 ### Example: Filter by type and tag
 
 ```bash
-curl "https://your-backend.railway.app/api/items?contentType=video&tag=python&dateFrom=2024-01-01T00:00:00Z"
+curl "https://reelvault.onrender.com/api/items?contentType=video&tag=python&dateFrom=2024-01-01T00:00:00Z"
 ```
 
 ---
 
 ## Environment Variables Reference
 
-### Backend (Railway)
+### Backend (Render)
 
 | Variable | Required | Description |
 |---|---|---|
@@ -295,14 +331,15 @@ curl "https://your-backend.railway.app/api/items?contentType=video&tag=python&da
 | `HUGGINGFACE_API_KEY` | ✅ | HuggingFace API token |
 | `TELEGRAM_BOT_TOKEN` | ✅ | Token from @BotFather |
 | `TELEGRAM_BOT_USERNAME` | ✅ | Bot username without `@` |
+| `TELEGRAM_ALLOWED_CHAT_ID` | ✅ | Your Telegram user ID (from @userinfobot) |
 | `CORS_ALLOWED_ORIGIN` | ✅ | Exact Vercel frontend URL |
-| `PORT` | ⚡ auto | Railway sets this automatically |
+| `PORT` | ⚡ auto | Render sets this automatically (default: 10000) |
 
 ### Frontend (env.js)
 
 | Variable | Description |
 |---|---|
-| `window.REELVAULT_API_URL` | Your Railway backend URL |
+| `window.REELVAULT_API_URL` | Your Render backend URL |
 
 ---
 
@@ -325,7 +362,7 @@ The model is loading (cold start on free tier). The backend automatically waits 
 
 ### CORS error in browser
 
-- Verify `CORS_ALLOWED_ORIGIN` in Railway exactly matches your Vercel URL (no trailing slash)
+- Verify `CORS_ALLOWED_ORIGIN` in Render exactly matches your Vercel URL (no trailing slash)
 - Use `https://` not `http://` for production
 
 ### `vector` type not found in PostgreSQL
@@ -340,49 +377,58 @@ This is included in `sql/setup.sql`. Run it in Supabase SQL Editor.
 
 This app uses `sentence-transformers/all-MiniLM-L6-v2` which produces **384-dimensional** embeddings. The `vector(384)` column definition must match. Do not change the model without also changing the SQL schema and index.
 
-### Railway build fails
+### Render build fails
 
 Ensure:
-1. Root Directory is set to `backend/`
-2. Java version is 21 (add `JAVA_VERSION=21` env var in Railway if needed)
-3. Build command: `mvn clean package -DskipTests`
-4. Start command: `java -jar target/reelvault.jar`
+1. `Dockerfile` is at the repo root (not inside `backend/`)
+2. Root Directory in Render is left blank
+3. Runtime is set to **Docker**
+4. All environment variables are set before the first deploy
+
+### Render free tier cold starts
+
+Render free tier spins down after 15 min of inactivity. Options:
+1. Use a cron service (like [cron-job.org](https://cron-job.org)) to ping your URL every 14 minutes
+2. Upgrade to Render Starter plan ($7/month) for always-on
 
 ---
 
 ## Project Structure
 
 ```
-reelvault/
+ReelVault/
+├── Dockerfile              ← Multi-stage Docker build for Render
+├── .dockerignore
+├── .gitignore
+│
 ├── backend/
-│   ├── src/main/java/com/reelvault/
-│   │   ├── ReelVaultApplication.java
-│   │   ├── config/        CorsConfig.java
-│   │   ├── controller/    ItemController.java, SearchController.java
-│   │   ├── dto/           ItemRequest.java, SearchRequest.java, SearchResultDto.java
-│   │   ├── model/         KnowledgeItem.java
-│   │   ├── repository/    KnowledgeItemRepository.java
-│   │   ├── service/       ItemService.java, EmbeddingService.java,
-│   │   │                  SearchService.java, TelegramBotService.java
-│   │   └── util/          VectorUtils.java
-│   ├── src/main/resources/application.yml
-│   └── pom.xml
+│   ├── pom.xml
+│   └── src/main/
+│       ├── java/com/reelvault/
+│       │   ├── ReelVaultApplication.java
+│       │   ├── config/        CorsConfig.java
+│       │   ├── controller/    ItemController.java, SearchController.java
+│       │   ├── dto/           ItemRequest.java, SearchRequest.java, SearchResultDto.java
+│       │   ├── model/         KnowledgeItem.java
+│       │   ├── repository/    KnowledgeItemRepository.java
+│       │   ├── service/       ItemService.java, EmbeddingService.java,
+│       │   │                  SearchService.java, TelegramBotService.java
+│       │   └── util/          VectorUtils.java
+│       └── resources/application.yml
 │
 ├── frontend/
 │   ├── index.html
 │   ├── css/style.css
 │   └── js/
-│       ├── env.js       ← set REELVAULT_API_URL here
+│       ├── env.js            ← Set REELVAULT_API_URL here
 │       ├── api.js
 │       ├── app.js
 │       ├── home.js
 │       ├── browse.js
 │       └── add.js
 │
-├── sql/
-│   └── setup.sql
-│
-└── README.md
+└── sql/
+    └── setup.sql
 ```
 
 ---
@@ -392,14 +438,24 @@ reelvault/
 | Command | Example | Description |
 |---|---|---|
 | `/save [url]` | `/save https://github.com/user/repo` | Auto-fetch title and save |
-| `/save [url] - [note]` | `/save https://... - Great ML tool` | Save with personal note |
+| `/save [url] #tag1 #tag2 note` | `/save https://... #ai #tools Great ML tool` | Save with tags and note |
 | `/search [query]` | `/search AI agent browser` | Semantic search, top 5 results |
-| `/recent` | `/recent` | Last 5 saved items |
+| `/recent` | `/recent` | Last 10 saved items |
 | `/digest` | `/digest` | Items from last 24 hours |
-| `/list [tag]` | `/list python` | Filter by tag |
+| `/list #tag` or `/list type:video` | `/list #python` | Filter by tag or type |
 | `/help` | `/help` | Show all commands |
 
 ---
 
+## Security Measures
+
+- **SSRF Protection** — Bot blocks requests to private/loopback IP ranges
+- **Telegram Authorization** — Bot only accepts commands from `TELEGRAM_ALLOWED_CHAT_ID`
+- **XSS Prevention** — URL fields validated to allow only `http/https` schemes
+- **Error Sanitization** — Stack traces and internal messages never exposed in production
+- **CORS** — Restricted to explicit frontend origin with explicit allowed headers
+- **Content Type Validation** — Whitelist enforcement on both backend and frontend
+
+---
+
 Made with ❤️ — ReelVault, your personal AI-powered knowledge base.
-# ReelVault
