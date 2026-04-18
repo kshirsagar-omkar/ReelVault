@@ -53,22 +53,25 @@
 ### Get your connection credentials
 
 In your Supabase project:
-- Go to **Settings → Database**
-- Scroll to **Connection string** → select **JDBC**
-- Copy the URL. It looks like:
+- Go to **Settings → Database** (or click **Connect** button)
+- ⚠️ **Important:** Render is IPv4-only. You **must** use the **Transaction Pooler** connection, NOT the Direct Connection.
+- Select **Transaction pooler** tab → Type: **JDBC**
+- The connection string looks like:
   ```
-  jdbc:postgresql://db.xxxxxxxxxxxx.supabase.co:5432/postgres
+  jdbc:postgresql://aws-0-[region].pooler.supabase.com:6543/postgres
   ```
-- Add `?sslmode=require` to the end:
+- Add `?sslmode=require&stringtype=unspecified` to the end:
   ```
-  jdbc:postgresql://db.xxxxxxxxxxxx.supabase.co:5432/postgres?sslmode=require
+  jdbc:postgresql://aws-0-[region].pooler.supabase.com:6543/postgres?sslmode=require&stringtype=unspecified
   ```
+
+> **Why `stringtype=unspecified`?** The pgvector `vector` column type requires this flag so the PostgreSQL driver doesn't send embeddings as `varchar`.
 
 You'll need:
 | Variable | Where to find |
 |---|---|
-| `SUPABASE_DB_URL` | JDBC URL (above) |
-| `SUPABASE_DB_USER` | Usually `postgres` |
+| `SUPABASE_DB_URL` | Transaction Pooler JDBC URL (above) with `?sslmode=require&stringtype=unspecified` |
+| `SUPABASE_DB_USER` | `postgres.YOUR_PROJECT_ID` (e.g. `postgres.ekeatbfhfeubglevvmls`) — **NOT** just `postgres` |
 | `SUPABASE_DB_PASSWORD` | The password you set when creating the project |
 
 ---
@@ -205,14 +208,16 @@ Stage 2: eclipse-temurin:21-jre-alpine   →  Lightweight runtime (~200MB)
 
    | Variable | Value |
    |---|---|
-   | `SUPABASE_DB_URL` | `jdbc:postgresql://db.XXX.supabase.co:5432/postgres?sslmode=require` |
-   | `SUPABASE_DB_USER` | `postgres` |
+   | `SUPABASE_DB_URL` | `jdbc:postgresql://aws-0-[region].pooler.supabase.com:6543/postgres?sslmode=require&stringtype=unspecified` |
+   | `SUPABASE_DB_USER` | `postgres.YOUR_PROJECT_ID` (e.g. `postgres.ekeatbfhfeubglevvmls`) |
    | `SUPABASE_DB_PASSWORD` | your Supabase password |
    | `HUGGINGFACE_API_KEY` | `hf_xxxx` |
    | `TELEGRAM_BOT_TOKEN` | your bot token |
    | `TELEGRAM_BOT_USERNAME` | your bot username (no @) |
    | `TELEGRAM_ALLOWED_CHAT_ID` | your Telegram user ID |
    | `CORS_ALLOWED_ORIGIN` | `https://your-app.vercel.app` (update after Vercel deploy) |
+
+   > ⚠️ **Common mistakes:** Do NOT wrap values in quotes. Do NOT add a trailing `/` to `CORS_ALLOWED_ORIGIN`.
 
 6. Click **Create Web Service** → Render builds the Docker image and deploys.
 
@@ -325,14 +330,14 @@ curl "https://reelvault.onrender.com/api/items?contentType=video&tag=python&date
 
 | Variable | Required | Description |
 |---|---|---|
-| `SUPABASE_DB_URL` | ✅ | JDBC connection URL with `?sslmode=require` |
-| `SUPABASE_DB_USER` | ✅ | Database username |
+| `SUPABASE_DB_URL` | ✅ | Transaction Pooler JDBC URL with `?sslmode=require&stringtype=unspecified` |
+| `SUPABASE_DB_USER` | ✅ | `postgres.PROJECT_ID` format (NOT just `postgres`) |
 | `SUPABASE_DB_PASSWORD` | ✅ | Database password |
 | `HUGGINGFACE_API_KEY` | ✅ | HuggingFace API token |
 | `TELEGRAM_BOT_TOKEN` | ✅ | Token from @BotFather |
 | `TELEGRAM_BOT_USERNAME` | ✅ | Bot username without `@` |
 | `TELEGRAM_ALLOWED_CHAT_ID` | ✅ | Your Telegram user ID (from @userinfobot) |
-| `CORS_ALLOWED_ORIGIN` | ✅ | Exact Vercel frontend URL |
+| `CORS_ALLOWED_ORIGIN` | ✅ | Exact Vercel frontend URL (no trailing slash, no quotes) |
 | `PORT` | ⚡ auto | Render sets this automatically (default: 10000) |
 
 ### Frontend (env.js)
@@ -345,24 +350,53 @@ curl "https://reelvault.onrender.com/api/items?contentType=video&tag=python&date
 
 ## Troubleshooting
 
-### `ddl-auto: validate` error on startup
+### Database connection error on startup
 
-The `application.yml` is set to `validate` — it expects the table to exist.
-**Fix:** Run `sql/setup.sql` in Supabase SQL Editor before starting the backend.
+The `application.yml` uses `ddl-auto: none` — the app starts without validating the schema.
+**Fix:** Run `sql/setup.sql` in Supabase SQL Editor before using the API.
+
+### `FATAL: Tenant or user not found`
+
+You're using the wrong username format. The Transaction Pooler requires `postgres.PROJECT_ID`, not just `postgres`.
+**Fix:** Set `SUPABASE_DB_USER` to `postgres.YOUR_PROJECT_ID` in Render.
+
+### `Network unreachable` / IPv4 issues
+
+Render is IPv4-only. The Direct Connection string (`db.xxx.supabase.co:5432`) does NOT work.
+**Fix:** Use the Transaction Pooler URL (`aws-0-[region].pooler.supabase.com:6543`).
+
+### `column "embedding" is of type vector but expression is of type character varying`
+
+**Fix:** Add `&stringtype=unspecified` to the end of your `SUPABASE_DB_URL` in Render.
+
+### `could not determine data type of parameter $1`
+
+This is a PgBouncer (Transaction Pooler) limitation with untyped parameters.
+**Already fixed** in the codebase — all native SQL parameters use `CAST(:param AS text)`.
+
+### `javax/xml/bind/annotation/XmlElement` — JAXB error
+
+JAXB was removed from JDK 11+. The `jaxb-api` and `jaxb-runtime` dependencies are already included in `pom.xml` to fix this for JDK 21.
 
 ### HuggingFace returns 503
 
-The model is loading (cold start on free tier). The backend automatically waits 20 seconds and retries once. If it fails again, the item is saved without an embedding (it will appear in Browse but not in semantic search results).
+The model is loading (cold start on free tier). The backend automatically waits 3 seconds and retries once. If it still fails, a clear error message is returned.
 
-### Telegram bot: `TelegramApiException`
+### HuggingFace returns 404
 
-- Verify `TELEGRAM_BOT_TOKEN` is correct
-- Ensure the token has no extra spaces
-- Confirm the bot is not already running in another process
+The API endpoint may have changed. The app uses `router.huggingface.co` which is the current working endpoint. If this stops working, check the [HuggingFace Inference API docs](https://huggingface.co/docs/api-inference/en/index).
+
+### Telegram bot: `409 Conflict`
+
+Only one instance of the bot can run at a time.
+- Ensure you don't have the bot running locally while it's also running on Render
+- If you see this during deploy, wait — the old instance will shut down
 
 ### CORS error in browser
 
-- Verify `CORS_ALLOWED_ORIGIN` in Render exactly matches your Vercel URL (no trailing slash)
+- Verify `CORS_ALLOWED_ORIGIN` in Render exactly matches your Vercel URL
+- **No trailing slash** (e.g., `https://reelvault.vercel.app` not `https://reelvault.vercel.app/`)
+- **No quotes** around the value
 - Use `https://` not `http://` for production
 
 ### `vector` type not found in PostgreSQL
@@ -409,6 +443,7 @@ ReelVault/
 │       │   ├── config/        CorsConfig.java
 │       │   ├── controller/    ItemController.java, SearchController.java
 │       │   ├── dto/           ItemRequest.java, SearchRequest.java, SearchResultDto.java
+│       │   ├── exception/     GlobalExceptionHandler.java
 │       │   ├── model/         KnowledgeItem.java
 │       │   ├── repository/    KnowledgeItemRepository.java
 │       │   ├── service/       ItemService.java, EmbeddingService.java,
@@ -438,23 +473,25 @@ ReelVault/
 | Command | Example | Description |
 |---|---|---|
 | `/save [url]` | `/save https://github.com/user/repo` | Auto-fetch title and save |
-| `/save [url] #tag1 #tag2 note` | `/save https://... #ai #tools Great ML tool` | Save with tags and note |
+| `/save [url] #tag1 #tag2 note` | `/save https://... #ai #tool Great ML tool` | Save with tags and personal note |
+| `/save [url] - note` | `/save https://... - Check this out later` | Save with note (legacy format) |
 | `/search [query]` | `/search AI agent browser` | Semantic search, top 5 results |
-| `/recent` | `/recent` | Last 10 saved items |
+| `/recent` | `/recent` | Last 5 saved items (10 in API) |
 | `/digest` | `/digest` | Items from last 24 hours |
-| `/list #tag` or `/list type:video` | `/list #python` | Filter by tag or type |
+| `/list [tag]` | `/list python` | Filter by tag |
 | `/help` | `/help` | Show all commands |
 
 ---
 
 ## Security Measures
 
-- **SSRF Protection** — Bot blocks requests to private/loopback IP ranges
+- **SSRF Protection** — Bot blocks requests to private/loopback IP ranges before fetching URL metadata
 - **Telegram Authorization** — Bot only accepts commands from `TELEGRAM_ALLOWED_CHAT_ID`
 - **XSS Prevention** — URL fields validated to allow only `http/https` schemes
-- **Error Sanitization** — Stack traces and internal messages never exposed in production
+- **Error Sanitization** — `GlobalExceptionHandler` returns clean JSON errors; stack traces never exposed
 - **CORS** — Restricted to explicit frontend origin with explicit allowed headers
 - **Content Type Validation** — Whitelist enforcement on both backend and frontend
+- **Dependency Security** — JAXB API explicitly included for JDK 21 compatibility
 
 ---
 

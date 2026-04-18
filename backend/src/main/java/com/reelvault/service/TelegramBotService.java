@@ -132,23 +132,39 @@ public class TelegramBotService extends TelegramLongPollingBot {
 
     /**
      * /save [url] — Save a URL, auto-fetching its title and description via Jsoup.
-     * /save [url] - [note] — Save a URL with a personal note.
+     * /save [url] #tag1 #tag2 note text — Save with tags and personal note.
+     * /save [url] - [note] — Legacy format, save with personal note.
      */
     private String handleSave(String args) {
         if (args.isBlank()) {
-            return "⚠️ Usage:\n`/save https://example.com`\n`/save https://example.com - My note here`";
+            return "⚠️ Usage:\n`/save https://example.com`\n`/save https://example.com #ai #tool Great resource`\n`/save https://example.com - My note here`";
         }
 
-        String url;
+        // Split into tokens: first token is URL, rest is tags + notes
+        String[] tokens = args.split("\\s+");
+        String url = tokens[0].trim();
         String note = null;
+        java.util.List<String> tags = new java.util.ArrayList<>();
 
-        // Check for "url - note" pattern
+        // Check for legacy "url - note" pattern first
         int separatorIdx = args.indexOf(" - ");
-        if (separatorIdx != -1) {
-            url  = args.substring(0, separatorIdx).trim();
+        if (separatorIdx != -1 && args.substring(0, separatorIdx).trim().equals(url)) {
+            // Legacy format: /save url - note
             note = args.substring(separatorIdx + 3).trim();
         } else {
-            url = args.trim();
+            // New format: /save url #tag1 #tag2 some note text
+            StringBuilder noteBuilder = new StringBuilder();
+            for (int i = 1; i < tokens.length; i++) {
+                if (tokens[i].startsWith("#") && tokens[i].length() > 1) {
+                    tags.add(tokens[i].substring(1)); // Remove # prefix
+                } else {
+                    noteBuilder.append(tokens[i]).append(" ");
+                }
+            }
+            String noteText = noteBuilder.toString().trim();
+            if (!noteText.isEmpty()) {
+                note = noteText;
+            }
         }
 
         // Basic URL validation
@@ -187,18 +203,29 @@ public class TelegramBotService extends TelegramLongPollingBot {
                 // Proceed with URL as title
             }
 
+            String[] tagArray = tags.toArray(new String[0]);
             KnowledgeItem saved = itemService.quickSave(
-                    url, null, title, description, contentType, new String[0], note
+                    url, null, title, description, contentType, tagArray, note
             );
 
-            return String.format(
-                    "✅ *Saved!*\n\n📌 *%s*\n🔗 %s%s\n🏷️ Type: `%s`\n🆔 ID: `%s`",
-                    escapeMarkdown(title),
-                    url,
-                    note != null ? "\n📝 Note: " + escapeMarkdown(note) : "",
+            StringBuilder response = new StringBuilder();
+            response.append(String.format(
+                    "✅ *Saved!*\n\n📌 *%s*\n🔗 %s",
+                    escapeMarkdown(title), url
+            ));
+            if (note != null) {
+                response.append("\n📝 Note: ").append(escapeMarkdown(note));
+            }
+            if (tagArray.length > 0) {
+                response.append("\n🔖 Tags: ").append(String.join(", ", tagArray));
+            }
+            response.append(String.format(
+                    "\n🏷️ Type: `%s`\n🆔 ID: `%s`",
                     contentType,
                     saved.getId().toString().substring(0, 8) + "..."
-            );
+            ));
+
+            return response.toString();
 
         } catch (Exception e) {
             log.error("Error saving URL {}: {}", url, e.getMessage(), e);
