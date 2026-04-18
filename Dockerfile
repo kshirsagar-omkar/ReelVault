@@ -22,8 +22,8 @@ COPY --from=builder /app/target/reelvault.jar app.jar
 # Render uses port 10000 by default
 EXPOSE 10000
 
-# JVM tuning for Render free tier (512MB RAM)
-ENV JAVA_OPTS="-Xms128m -Xmx384m -XX:+UseG1GC -XX:+UseStringDeduplication"
+# JVM tuning for Render free tier (512MB RAM) + force IPv4 for Supabase
+ENV JAVA_OPTS="-Xms128m -Xmx384m -XX:+UseG1GC -XX:+UseStringDeduplication -Djava.net.preferIPv4Stack=true"
 
 # Start Spring Boot — PORT env var is set by Render automatically
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -Dserver.port=${PORT:-10000} -jar app.jar"]
