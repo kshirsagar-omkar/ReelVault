@@ -6,4 +6,4 @@
  *
  * Leave empty string to use relative URLs (when frontend is served from Spring Boot).
  */
-window.REELVAULT_API_URL = '';
+window.REELVAULT_API_URL = 'https://reelvault-3c7l.onrender.com';
