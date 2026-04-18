@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+backend/target/
+*.class
+*.jar
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# graphify output (not needed in deployed app)
+graphify-out/
+graphify-init.sh
+GRAPHIFY_GUIDE.md
+GRAPHIFY_ANTIGRAVITY_GUIDE.md
+
+# Docs (not needed in container)
+V1_Document.md
+
+# Git
+.git/
+.gitignore
+
+# Agent config
+.agent/
