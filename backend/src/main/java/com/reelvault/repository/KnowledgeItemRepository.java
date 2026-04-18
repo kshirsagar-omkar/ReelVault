@@ -66,10 +66,10 @@ public interface KnowledgeItemRepository extends JpaRepository<KnowledgeItem, UU
         value = """
             SELECT *
             FROM knowledge_items
-            WHERE (:contentType IS NULL OR content_type = :contentType)
-              AND (:tag        IS NULL OR :tag = ANY(tags))
-              AND (:dateFrom   IS NULL OR created_at >= CAST(:dateFrom AS timestamptz))
-              AND (:dateTo     IS NULL OR created_at <= CAST(:dateTo   AS timestamptz))
+            WHERE (CAST(:contentType AS text) IS NULL OR content_type = CAST(:contentType AS text))
+              AND (CAST(:tag AS text)         IS NULL OR CAST(:tag AS text) = ANY(tags))
+              AND (CAST(:dateFrom AS text)    IS NULL OR created_at >= CAST(:dateFrom AS timestamptz))
+              AND (CAST(:dateTo AS text)      IS NULL OR created_at <= CAST(:dateTo   AS timestamptz))
             ORDER BY created_at DESC
             """,
         nativeQuery = true
