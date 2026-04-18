@@ -21,16 +21,12 @@ import java.util.Map;
  * the Hugging Face Inference API with the {@code sentence-transformers/all-MiniLM-L6-v2} model.
  *
  * <p>API endpoint:
- * POST https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2
+ * POST https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2
  *
- * <p>Request body: {@code {"inputs": "your text here"}}
+ * <p>Request body: {@code {"inputs": ["your text here"]}}
  *
- * <p>Response format variations (we handle all cases):
- * <ol>
- *   <li>1D float array {@code [f1, f2, ...]} — already pooled (384 values), use directly.</li>
- *   <li>2D array {@code [[f1, f2, ...]]} — one sentence, one embedding row, use row 0.</li>
- *   <li>2D token-level array {@code [[tok1_e1,...], [tok2_e1,...]]} — mean pool over tokens.</li>
- * </ol>
+ * <p>Response format: 3D array {@code [[[f1, f2, ...]]]} — sentence embedding at [0][0].
+ * Falls back to 2D {@code [[f1, ...]]} or 1D {@code [f1, ...]} parsing for compatibility.
  */
 @Service
 public class EmbeddingService {
@@ -64,14 +60,15 @@ public class EmbeddingService {
         if (text == null || text.isBlank()) {
             throw new IllegalArgumentException("Cannot generate embedding for blank text");
         }
-        // MED-1: Truncate to ~500 tokens (2000 chars) to avoid HuggingFace silent truncation
+        // Truncate to ~500 tokens (2000 chars) to avoid HuggingFace silent truncation
         if (text.length() > 2000) {
             log.debug("Truncating embedding text from {} to 2000 chars", text.length());
             text = text.substring(0, 2000);
         }
 
         try {
-            String requestBody = objectMapper.writeValueAsString(Map.of("inputs", text));
+            // FIX 2: inputs must be a JSON array, not a plain string
+            String requestBody = objectMapper.writeValueAsString(Map.of("inputs", List.of(text)));
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(apiUrl))
@@ -85,15 +82,20 @@ public class EmbeddingService {
                     request, HttpResponse.BodyHandlers.ofString()
             );
 
+            // FIX 4: Retry on 503 (model loading) — wait 3s then retry once
             if (response.statusCode() == 503) {
-                // Model is still loading on HuggingFace free tier — retry after brief wait
-                log.warn("HuggingFace model loading (503). Waiting 20s then retrying...");
-                Thread.sleep(20_000);
+                log.warn("HuggingFace model loading (503). Waiting 3s then retrying...");
+                Thread.sleep(3_000);
                 response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() == 503) {
+                    throw new RuntimeException(
+                            "Hugging Face model is loading, please try again in a few seconds"
+                    );
+                }
             }
 
             if (response.statusCode() != 200) {
-                // SEC-2: Truncate body in log to prevent API key reflection in error messages
+                // Truncate body in log to prevent API key reflection in error messages
                 String safeBody = response.body();
                 if (safeBody != null && safeBody.length() > 200) safeBody = safeBody.substring(0, 200) + "...";
                 throw new RuntimeException(
@@ -104,10 +106,8 @@ public class EmbeddingService {
             return parseEmbedding(response.body());
 
         } catch (IOException e) {
-            // BUG-2: Separate IO errors from interrupt handling
             throw new RuntimeException("Failed to call HuggingFace embedding API (IO error)", e);
         } catch (InterruptedException e) {
-            // BUG-2: Restore interrupt flag BEFORE throwing so callers can react properly
             Thread.currentThread().interrupt();
             throw new RuntimeException("HuggingFace API call interrupted", e);
         }
@@ -115,14 +115,15 @@ public class EmbeddingService {
 
     /**
      * Parse the HuggingFace API response body into a float[] embedding.
-     * Handles 1D, 2D (single-sentence), and 2D (token-level) response formats.
+     * Handles 3D (current API), 2D, and 1D response formats.
      */
     private float[] parseEmbedding(String responseBody) throws IOException {
         // Parse into a generic nested List structure using Jackson
         List<Object> parsed = objectMapper.readValue(responseBody, new TypeReference<>() {});
 
-        if (parsed.isEmpty()) {
-            throw new RuntimeException("Empty embedding response from HuggingFace API");
+        // FIX 3: null/empty check
+        if (parsed == null || parsed.isEmpty()) {
+            throw new RuntimeException("Hugging Face returned empty embedding for input");
         }
 
         Object first = parsed.get(0);
@@ -133,20 +134,27 @@ public class EmbeddingService {
             return toFloatArray(parsed);
 
         } else if (first instanceof List<?> innerList) {
-            if (!innerList.isEmpty() && innerList.get(0) instanceof Number) {
-                // Case 2: 2D array [[f1, f2, ...]] — one row per sentence, take row 0
+            if (innerList.isEmpty()) {
+                throw new RuntimeException("Hugging Face returned empty embedding for input");
+            }
+
+            if (innerList.get(0) instanceof Number) {
+                // Case 2: 2D array [[f1, f2, ...]] — take row 0 directly
                 log.debug("Embedding response: 2D array [{} rows x {} dims]",
                         parsed.size(), innerList.size());
-                if (parsed.size() == 1) {
-                    return toFloatArray(innerList);
-                }
-                // Multiple sentences returned (shouldn't happen for single input)
-                // Mean pool all rows
-                return meanPool(castToDoubleList(parsed));
+                return toFloatArray(innerList);
 
-            } else if (!innerList.isEmpty() && innerList.get(0) instanceof List) {
-                // Case 3: 3D array — token-level embeddings, mean pool over tokens
-                log.debug("Embedding response: 3D token-level array, applying mean pooling");
+            } else if (innerList.get(0) instanceof List<?> innerInnerList) {
+                // Case 3: 3D array [[[f1, f2, ...]]] — sentence embedding at [0][0]
+                log.debug("Embedding response: 3D array, extracting [0][0]");
+                if (innerInnerList.isEmpty()) {
+                    throw new RuntimeException("Hugging Face returned empty embedding for input");
+                }
+                if (innerInnerList.get(0) instanceof Number) {
+                    // [0][0] is the pooled sentence vector
+                    return toFloatArray(innerInnerList);
+                }
+                // If it's deeper nested token-level embeddings, mean pool
                 @SuppressWarnings("unchecked")
                 List<List<Object>> tokenEmbeddings = (List<List<Object>>) (List<?>) innerList;
                 return meanPool(tokenEmbeddings);

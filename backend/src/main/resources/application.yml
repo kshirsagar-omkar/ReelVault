@@ -62,11 +62,12 @@ spring:
 server:
   port: ${PORT:8080}
   error:
-    # TEMPORARY: enable error details for debugging (revert to 'never' after fixing)
-    include-message: always
-    include-binding-errors: always
-    include-stacktrace: always
-    include-exception: true
+    # SECURITY: never expose stack traces or internal error details to clients
+    # Clean error responses are handled by GlobalExceptionHandler
+    include-message: never
+    include-binding-errors: never
+    include-stacktrace: never
+    include-exception: false
 
 # ----------------------------------------------------------
 # App Custom Properties
