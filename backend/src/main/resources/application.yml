@@ -1,0 +1,119 @@
+# ============================================================
+# ReelVault — Spring Boot Application Configuration
+# All sensitive values are loaded from environment variables.
+# Set these in Railway dashboard for production deployment.
+# ============================================================
+
+spring:
+  application:
+    name: reelvault
+
+  # ----------------------------------------------------------
+  # DataSource — Supabase PostgreSQL via Direct Connection JDBC
+  # Get the JDBC URL from: Supabase Dashboard → Settings → Database → Direct Connection
+  # Format: jdbc:postgresql://[host]:5432/postgres?sslmode=require
+  # ----------------------------------------------------------
+  datasource:
+    url: ${SUPABASE_DB_URL}
+    username: ${SUPABASE_DB_USER}
+    password: ${SUPABASE_DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  # ----------------------------------------------------------
+  # JPA / Hibernate
+  # ----------------------------------------------------------
+  jpa:
+    hibernate:
+      # Use 'validate' in production — never 'create' or 'create-drop'
+      # Run sql/setup.sql manually in Supabase SQL Editor first.
+      ddl-auto: validate
+    # show-sql: set to true in dev profile below (never in production)
+    show-sql: false
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+        # Disable this flag so Hibernate doesn't wrap column types unnecessarily
+        globally_quoted_identifiers: false
+        jdbc:
+          time_zone: UTC
+
+  # ----------------------------------------------------------
+  # Jackson — serialize Java 8 time correctly
+  # ----------------------------------------------------------
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    time-zone: UTC
+
+# ----------------------------------------------------------
+# Server
+# ----------------------------------------------------------
+server:
+  port: ${PORT:8080}
+  error:
+    # SECURITY: never expose internal error messages or stack traces to clients
+    include-message: never
+    include-binding-errors: never
+    include-stacktrace: never
+    include-exception: false
+
+# ----------------------------------------------------------
+# App Custom Properties
+# ----------------------------------------------------------
+app:
+  huggingface:
+    # Free tier HuggingFace API key — get from https://huggingface.co/settings/tokens
+    api-key: ${HUGGINGFACE_API_KEY}
+    api-url: https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2
+
+  telegram:
+    # Get from @BotFather on Telegram
+    bot-token: ${TELEGRAM_BOT_TOKEN}
+    bot-username: ${TELEGRAM_BOT_USERNAME}
+    # SEC-4: Your personal Telegram user ID. Get it from @userinfobot.
+    # Leave empty to allow all users (not recommended for production).
+    allowed-chat-id: ${TELEGRAM_ALLOWED_CHAT_ID:}
+
+  cors:
+    # Your Vercel frontend URL, e.g. https://reelvault.vercel.app
+    # Use * to allow all origins during development (change in production!)
+    allowed-origin: ${CORS_ALLOWED_ORIGIN:http://localhost:5500}
+
+# ----------------------------------------------------------
+# Logging
+# ----------------------------------------------------------
+logging:
+  level:
+    com.reelvault: INFO
+    org.springframework.web: WARN
+    org.hibernate.SQL: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+---
+# ===========================================================
+# DEV profile — activate with: --spring.profiles.active=dev
+# (never use in production / Railway)
+# ===========================================================
+spring:
+  config:
+    activate:
+      on-profile: dev
+  jpa:
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+  server:
+    error:
+      include-message: always
+      include-binding-errors: always
+      include-stacktrace: on_param

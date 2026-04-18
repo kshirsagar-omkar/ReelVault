@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="ReelVault — Save links, reels, and resources from anywhere. Search your personal knowledge base using natural language powered by AI embeddings." />
+    <title>ReelVault — Personal Semantic Knowledge Base</title>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+
+    <!-- App Stylesheet -->
+    <link rel="stylesheet" href="css/style.css" />
+
+    <!-- API Base URL Configuration (edit this before deploying to Vercel) -->
+    <script src="js/env.js"></script>
+</head>
+<body>
+
+    <!-- ============================================================
+         Navigation Bar
+         ============================================================ -->
+    <nav class="navbar" id="main-navbar" role="navigation" aria-label="Main navigation">
+        <div class="navbar__inner">
+            <!-- Brand Logo -->
+            <a class="navbar__brand" href="#home" id="nav-brand">
+                <span class="navbar__logo" aria-hidden="true">
+                    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="14" cy="14" r="13" stroke="url(#logo-gradient)" stroke-width="2"/>
+                        <path d="M9 10L14 18L19 10" stroke="url(#logo-gradient)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <defs>
+                            <linearGradient id="logo-gradient" x1="0" y1="0" x2="28" y2="28">
+                                <stop offset="0%" stop-color="#7c6af7"/>
+                                <stop offset="100%" stop-color="#22d5b5"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </span>
+                <span class="navbar__title">ReelVault</span>
+            </a>
+
+            <!-- Navigation Links -->
+            <ul class="navbar__links" role="list">
+                <li>
+                    <a class="navbar__link active" href="#home" id="nav-home" data-page="home">
+                        <span class="nav-icon">⚡</span> Search
+                    </a>
+                </li>
+                <li>
+                    <a class="navbar__link" href="#browse" id="nav-browse" data-page="browse">
+                        <span class="nav-icon">🗂️</span> Browse
+                    </a>
+                </li>
+                <li>
+                    <a class="navbar__link" href="#add" id="nav-add" data-page="add">
+                        <span class="nav-icon">＋</span> Add Item
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- ============================================================
+         Main Content
+         ============================================================ -->
+    <main class="main" id="main-content">
+
+        <!-- --------------------------------------------------------
+             PAGE: Home — Semantic Search Hero
+             -------------------------------------------------------- -->
+        <section class="page page--home active" id="page-home" aria-label="Search Page">
+
+            <!-- Hero -->
+            <div class="hero">
+                <div class="hero__badge">✨ AI-Powered Knowledge Base</div>
+                <h1 class="hero__title">
+                    Find anything in your<br/>
+                    <span class="gradient-text">ReelVault</span>
+                </h1>
+                <p class="hero__subtitle">
+                    Natural language search across all your saved links, reels, articles, and notes —
+                    powered by semantic AI embeddings.
+                </p>
+
+                <!-- Search Form -->
+                <div class="search-container" role="search">
+                    <div class="search-box" id="search-box">
+                        <span class="search-box__icon" aria-hidden="true">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                            </svg>
+                        </span>
+                        <input
+                            type="text"
+                            class="search-box__input"
+                            id="search-input"
+                            placeholder="e.g. AI agent that can browse the web…"
+                            autocomplete="off"
+                            aria-label="Search query"
+                        />
+                        <button class="search-box__btn" id="search-btn" aria-label="Search">
+                            Search
+                        </button>
+                    </div>
+
+                    <!-- Quick example chips -->
+                    <div class="search-chips" id="search-chips" aria-label="Quick search examples">
+                        <span class="chip-label">Try:</span>
+                        <button class="chip" data-query="machine learning tutorial">ML tutorial</button>
+                        <button class="chip" data-query="web automation tools">web automation</button>
+                        <button class="chip" data-query="system design resources">system design</button>
+                        <button class="chip" data-query="free API tools">free APIs</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search Results -->
+            <div class="results-section" id="results-section" aria-live="polite" aria-label="Search Results">
+                <div class="results-header" id="results-header" style="display:none">
+                    <span class="results-count" id="results-count"></span>
+                    <span class="results-query" id="results-query"></span>
+                </div>
+                <div class="results-grid" id="results-grid" role="list"></div>
+                <div class="empty-state" id="search-empty" style="display:none">
+                    <div class="empty-state__icon">🔍</div>
+                    <div class="empty-state__title">No results found</div>
+                    <div class="empty-state__text">Try a different query, or <a href="#add" class="link">add more items</a> to your vault.</div>
+                </div>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div class="loading-spinner" id="search-loader" style="display:none" aria-label="Searching…">
+                <div class="spinner"></div>
+                <span>Searching with AI…</span>
+            </div>
+
+        </section>
+
+        <!-- --------------------------------------------------------
+             PAGE: Browse — All Items with Filters
+             -------------------------------------------------------- -->
+        <section class="page page--browse" id="page-browse" aria-label="Browse All Items" style="display:none">
+
+            <div class="page-header">
+                <h2 class="page-title">Browse <span class="gradient-text">Your Vault</span></h2>
+                <p class="page-subtitle">Filter and explore all saved knowledge items.</p>
+            </div>
+
+            <!-- Filter Panel -->
+            <div class="filter-panel" id="filter-panel" aria-label="Filter controls">
+                <div class="filter-group">
+                    <label class="filter-label" for="filter-type">Content Type</label>
+                    <select class="filter-select" id="filter-type" aria-label="Filter by content type">
+                        <option value="">All Types</option>
+                        <option value="tool">🔧 Tool</option>
+                        <option value="article">📰 Article</option>
+                        <option value="video">🎬 Video</option>
+                        <option value="paper">📄 Paper</option>
+                        <option value="course">🎓 Course</option>
+                        <option value="note">📝 Note</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label class="filter-label" for="filter-tag">Tag</label>
+                    <input
+                        type="text"
+                        class="filter-input"
+                        id="filter-tag"
+                        placeholder="e.g. python"
+                        aria-label="Filter by tag"
+                    />
+                </div>
+
+                <div class="filter-group">
+                    <label class="filter-label" for="filter-date-from">From Date</label>
+                    <input
+                        type="date"
+                        class="filter-input"
+                        id="filter-date-from"
+                        aria-label="Filter from date"
+                    />
+                </div>
+
+                <div class="filter-group">
+                    <label class="filter-label" for="filter-date-to">To Date</label>
+                    <input
+                        type="date"
+                        class="filter-input"
+                        id="filter-date-to"
+                        aria-label="Filter to date"
+                    />
+                </div>
+
+                <div class="filter-actions">
+                    <button class="btn btn--primary" id="btn-apply-filter">Apply Filters</button>
+                    <button class="btn btn--ghost" id="btn-clear-filter">Clear</button>
+                </div>
+            </div>
+
+            <!-- Browse Results -->
+            <div class="browse-stats" id="browse-stats"></div>
+            <div class="results-grid" id="browse-grid" role="list"></div>
+            <div class="loading-spinner" id="browse-loader" style="display:none" aria-label="Loading…">
+                <div class="spinner"></div><span>Loading your vault…</span>
+            </div>
+            <div class="empty-state" id="browse-empty" style="display:none">
+                <div class="empty-state__icon">🗂️</div>
+                <div class="empty-state__title">Nothing saved yet</div>
+                <div class="empty-state__text">Start building your vault! <a href="#add" class="link">Add your first item →</a></div>
+            </div>
+
+        </section>
+
+        <!-- --------------------------------------------------------
+             PAGE: Add Item — Save Form
+             -------------------------------------------------------- -->
+        <section class="page page--add" id="page-add" aria-label="Add New Item" style="display:none">
+
+            <div class="page-header">
+                <h2 class="page-title">Add to <span class="gradient-text">ReelVault</span></h2>
+                <p class="page-subtitle">Save a new link, resource, or note. The AI embedding is generated automatically.</p>
+            </div>
+
+            <div class="form-card">
+                <form id="save-form" aria-label="Save new item form" novalidate>
+
+                    <!-- Row 1: Title + Content Type -->
+                    <div class="form-row form-row--two">
+                        <div class="form-group">
+                            <label class="form-label required" for="form-title">Title</label>
+                            <input
+                                type="text"
+                                class="form-input"
+                                id="form-title"
+                                placeholder="e.g. LangGraph — Build AI Agents"
+                                required
+                                aria-required="true"
+                            />
+                            <span class="form-error" id="error-title"></span>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="form-type">Content Type</label>
+                            <select class="form-input form-select" id="form-type" aria-label="Content type">
+                                <option value="">Select type…</option>
+                                <option value="tool">🔧 Tool</option>
+                                <option value="article">📰 Article</option>
+                                <option value="video">🎬 Video</option>
+                                <option value="paper">📄 Paper</option>
+                                <option value="course">🎓 Course</option>
+                                <option value="note">📝 Note</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Row 2: Description -->
+                    <div class="form-group">
+                        <label class="form-label" for="form-description">Description</label>
+                        <textarea
+                            class="form-input form-textarea"
+                            id="form-description"
+                            placeholder="Brief description of what this resource is about…"
+                            rows="3"
+                        ></textarea>
+                    </div>
+
+                    <!-- Row 3: Original URL + Source URL -->
+                    <div class="form-row form-row--two">
+                        <div class="form-group">
+                            <label class="form-label" for="form-original-url">Original URL</label>
+                            <input
+                                type="url"
+                                class="form-input"
+                                id="form-original-url"
+                                placeholder="https://github.com/example/repo"
+                                aria-label="Original URL of the resource"
+                            />
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="form-source-url">Source URL</label>
+                            <input
+                                type="url"
+                                class="form-input"
+                                id="form-source-url"
+                                placeholder="https://instagram.com/reel/xyz"
+                                aria-label="Where you found this (Instagram reel, tweet, etc.)"
+                            />
+                            <span class="form-hint">Where you discovered this (e.g. Instagram reel, tweet)</span>
+                        </div>
+                    </div>
+
+                    <!-- Row 4: Tags -->
+                    <div class="form-group">
+                        <label class="form-label" for="form-tags">Tags</label>
+                        <input
+                            type="text"
+                            class="form-input"
+                            id="form-tags"
+                            placeholder="python, machine-learning, tutorial (comma-separated)"
+                            aria-label="Tags, comma-separated"
+                        />
+                        <div class="tag-preview" id="tag-preview" aria-label="Tag preview"></div>
+                    </div>
+
+                    <!-- Row 5: Personal Notes -->
+                    <div class="form-group">
+                        <label class="form-label" for="form-notes">Personal Notes</label>
+                        <textarea
+                            class="form-input form-textarea"
+                            id="form-notes"
+                            placeholder="Your thoughts, why this is useful, what you want to remember…"
+                            rows="4"
+                        ></textarea>
+                    </div>
+
+                    <!-- Submit -->
+                    <div class="form-footer">
+                        <button type="submit" class="btn btn--primary btn--large btn--full" id="btn-save">
+                            <span class="btn-text">Save to Vault</span>
+                            <span class="btn-icon" aria-hidden="true">→</span>
+                        </button>
+                    </div>
+
+                    <!-- Feedback Messages -->
+                    <div class="form-feedback form-feedback--success" id="form-success" style="display:none" role="alert">
+                        <span class="feedback-icon">✅</span>
+                        <span class="feedback-text" id="form-success-text">Item saved successfully!</span>
+                    </div>
+                    <div class="form-feedback form-feedback--error" id="form-error" style="display:none" role="alert">
+                        <span class="feedback-icon">❌</span>
+                        <span class="feedback-text" id="form-error-text">Failed to save. Please try again.</span>
+                    </div>
+
+                </form>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- ============================================================
+         Toast Notification Container
+         ============================================================ -->
+    <div class="toast-container" id="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+    <!-- ============================================================
+         Item Detail Modal
+         ============================================================ -->
+    <div class="modal-overlay" id="modal-overlay" style="display:none" role="dialog" aria-modal="true" aria-label="Item details">
+        <div class="modal" id="item-modal">
+            <button class="modal__close" id="modal-close" aria-label="Close modal">×</button>
+            <div class="modal__content" id="modal-content"></div>
+        </div>
+    </div>
+
+    <!-- Scripts: only app.js needed — it imports all page modules via ES import -->
+    <!-- BUG-6 fix: removed redundant <script> tags for api.js, home.js, browse.js, add.js -->
+    <script type="module" src="js/app.js"></script>
+
+</body>
+</html>
