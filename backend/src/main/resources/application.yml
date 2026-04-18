@@ -38,7 +38,7 @@ spring:
     open-in-view: false
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
+        # Dialect auto-detected from JDBC driver — do not set explicitly
         format_sql: false
         # Disable this flag so Hibernate doesn't wrap column types unnecessarily
         globally_quoted_identifiers: false
