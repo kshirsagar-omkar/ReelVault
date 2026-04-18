@@ -30,9 +30,10 @@ spring:
   # ----------------------------------------------------------
   jpa:
     hibernate:
-      # Use 'validate' in production — never 'create' or 'create-drop'
-      # Run sql/setup.sql manually in Supabase SQL Editor first.
-      ddl-auto: validate
+      # 'none' = don't touch schema, don't validate at startup
+      # Schema is managed manually via sql/setup.sql
+      # Using 'none' instead of 'validate' so the app can start even if DB is temporarily unreachable
+      ddl-auto: none
     # show-sql: set to true in dev profile below (never in production)
     show-sql: false
     open-in-view: false
